@@ -1,18 +1,155 @@
 import React, { useState, useEffect } from 'react'
 import { useFinanceiro } from '../context/FinanceiroContext'
-import { formatBRL, getReceitas, getDespesas, updateReceita, deleteReceita, updateDespesa, deleteDespesa } from '../lib/supabase'
-import { MetricCard, StatusBadge, EmptyState, showToast, Spinner } from '../components/UI'
+import { formatBRL, supabase } from '../lib/supabase'
+import { MetricCard, StatusBadge, EmptyState, showToast, Spinner, Modal } from '../components/UI'
 import LancamentoRapido from '../components/LancamentoRapido'
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis } from 'recharts'
+
+const CORES = ['#4ADE80','#60A5FA','#F87171','#FCD34D','#A78BFA','#34D399','#F97316','#E879F9']
+
+function getMeses() {
+  const meses = []
+  const hoje = new Date()
+  for (let i = 5; i >= -1; i--) {
+    const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1)
+    const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+    const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+    meses.push({ val, label })
+  }
+  return meses
+}
+
+function mesAtualStr() {
+  const now = new Date()
+  return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`
+}
+
+// ─── MODAL DE EDIÇÃO ────────────────────────────────────────
+function ModalEditar({ item, tipo, onClose, onSalvo, categorias }) {
+  const [descricao, setDescricao] = useState(item?.descricao || '')
+  const [valor, setValor] = useState(item?.valor || '')
+  const [categoria, setCategoria] = useState(item?.categoria || '')
+  const [data, setData] = useState(item?.data || '')
+  const [status, setStatus] = useState(item?.status || 'paga')
+  const [responsavel, setResponsavel] = useState(item?.responsavel || 'familia')
+  const [saving, setSaving] = useState(false)
+
+  async function salvar() {
+    setSaving(true)
+    try {
+      const tabela = tipo === 'receita' ? 'receitas' : 'despesas'
+      const updates = { descricao, valor: Number(valor), categoria, data, responsavel }
+      if (tipo === 'despesa') updates.status = status
+      else updates.status = status
+      await supabase.from(tabela).update(updates).eq('id', item.id)
+      showToast('✓ Lançamento atualizado!')
+      onSalvo()
+      onClose()
+    } catch (e) {
+      showToast('Erro: ' + e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function excluir() {
+    if (!window.confirm('Excluir este lançamento?')) return
+    const tabela = tipo === 'receita' ? 'receitas' : 'despesas'
+    await supabase.from(tabela).delete().eq('id', item.id)
+    showToast('Lançamento excluído')
+    onSalvo()
+    onClose()
+  }
+
+  const statusOpcoes = tipo === 'despesa'
+    ? [{ value: 'paga', label: '✓ Paga' }, { value: 'pendente', label: '◯ Pendente' }]
+    : [{ value: 'recebida', label: '✓ Recebida' }, { value: 'confirmada', label: '◐ Confirmada' }, { value: 'prevista', label: '◯ Prevista' }]
+
+  const responsaveis = tipo === 'despesa'
+    ? [{ value: 'alan', label: 'Alan' }, { value: 'vanessa', label: 'Vanessa' }, { value: 'familia', label: 'Família' }]
+    : [{ value: 'alan', label: 'Alan' }, { value: 'vanessa', label: 'Vanessa' }]
+
+  return (
+    <Modal open={!!item} onClose={onClose} title={`Editar ${tipo === 'receita' ? 'receita' : 'despesa'}`}>
+      <div className="form-group">
+        <label className="form-label">Status</label>
+        <div className="tags">
+          {statusOpcoes.map(s => (
+            <button key={s.value} className={`tag ${status === s.value ? 'sel' : ''}`} onClick={() => setStatus(s.value)}>{s.label}</button>
+          ))}
+        </div>
+      </div>
+      <div className="form-group">
+        <label className="form-label">Descrição</label>
+        <input className="form-input" value={descricao} onChange={e => setDescricao(e.target.value)} />
+      </div>
+      <div className="form-group">
+        <label className="form-label">Valor (R$)</label>
+        <input className="form-input form-valor" type="number" value={valor} onChange={e => setValor(e.target.value)} />
+      </div>
+      <div className="form-group">
+        <label className="form-label">Categoria</label>
+        <div className="tags">
+          {categorias.map(cat => (
+            <button key={cat.id || cat} className={`tag ${categoria === (cat.nome || cat) ? 'sel' : ''}`}
+              onClick={() => setCategoria(cat.nome || cat)}>
+              {cat.icone || ''} {cat.nome || cat}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="form-group">
+        <label className="form-label">Responsável</label>
+        <div className="tags">
+          {responsaveis.map(r => (
+            <button key={r.value} className={`tag ${responsavel === r.value ? 'sel' : ''}`} onClick={() => setResponsavel(r.value)}>{r.label}</button>
+          ))}
+        </div>
+      </div>
+      <div className="form-group">
+        <label className="form-label">{tipo === 'despesa' && status === 'pendente' ? 'Data de vencimento' : 'Data'}</label>
+        <input className="form-input" type="date" value={data} onChange={e => setData(e.target.value)} />
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+        <button className="btn btn-primary" style={{ flex: 1, justifyContent: 'center', padding: 12 }} onClick={salvar} disabled={saving}>
+          {saving ? <Spinner /> : <><i className="ti ti-check" />Salvar</>}
+        </button>
+        <button className="btn btn-danger" style={{ justifyContent: 'center', padding: '12px 16px' }} onClick={excluir}>
+          <i className="ti ti-trash" />
+        </button>
+      </div>
+    </Modal>
+  )
+}
 
 // ─── RECEITAS ──────────────────────────────────────────────────
 export function Receitas() {
-  const { dados, recarregar } = useFinanceiro()
+  const [mes, setMes] = useState(mesAtualStr())
+  const [receitas, setReceitas] = useState([])
+  const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
-  const receitas = dados?.receitas || []
+  const [editando, setEditando] = useState(null)
+  const [categorias, setCategorias] = useState([])
+  const meses = getMeses()
+
+  useEffect(() => { carregar() }, [mes])
+
+  async function carregar() {
+    setLoading(true)
+    const inicio = `${mes}-01`
+    const fimDate = new Date(mes.split('-')[0], mes.split('-')[1], 0)
+    const fim = fimDate.toISOString().split('T')[0]
+    const [{ data: rec }, { data: cats }] = await Promise.all([
+      supabase.from('receitas').select('*').gte('data', inicio).lte('data', fim).order('data', { ascending: false }),
+      supabase.from('categorias_custom').select('*').eq('tipo', 'receita').order('nome')
+    ])
+    setReceitas(rec || [])
+    setCategorias(cats || [])
+    setLoading(false)
+  }
 
   const totalRecebido = receitas.filter(r => r.status === 'recebida').reduce((s, r) => s + Number(r.valor), 0)
-  const totalConfirmado = receitas.filter(r => r.status === 'confirmada').reduce((s, r) => s + Number(r.valor), 0)
+  const totalConfirmado = receitas.filter(r => ['confirmada','recebida'].includes(r.status)).reduce((s, r) => s + Number(r.valor), 0)
   const totalPrevisto = receitas.reduce((s, r) => s + Number(r.valor), 0)
 
   return (
@@ -22,59 +159,81 @@ export function Receitas() {
           <div className="page-title">Receitas</div>
           <div className="page-sub">Previstas, confirmadas e recebidas</div>
         </div>
-        <button className="btn btn-primary" onClick={() => setModalOpen(true)}>
-          <i className="ti ti-plus" />Nova receita
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <select className="form-input" value={mes} onChange={e => setMes(e.target.value)} style={{ width: 'auto' }}>
+            {meses.map(m => <option key={m.val} value={m.val}>{m.label}</option>)}
+          </select>
+          <button className="btn btn-primary" onClick={() => setModalOpen(true)}>
+            <i className="ti ti-plus" />Nova
+          </button>
+        </div>
       </div>
 
       <div className="cards-grid-3">
-        <MetricCard label="Previsto" value={formatBRL(totalPrevisto)} color="" />
-        <MetricCard label="Confirmado" value={formatBRL(totalConfirmado + totalRecebido)} color="amber" />
+        <MetricCard label="Previsto" value={formatBRL(totalPrevisto)} />
+        <MetricCard label="Confirmado" value={formatBRL(totalConfirmado)} color="amber" />
         <MetricCard label="Recebido" value={formatBRL(totalRecebido)} color="green" />
       </div>
 
       <div className="panel">
-        <div className="panel-header">
-          <div className="panel-title">Todas as receitas do mês</div>
-        </div>
-        {receitas.length === 0 ? (
-          <EmptyState icon="arrow-down-circle" text="Nenhuma receita cadastrada este mês." />
-        ) : (
-          <div className="tx-list">
-            {receitas.map(r => (
-              <div key={r.id} className="tx-item">
-                <div className={`avatar ${r.responsavel}`}>{r.responsavel === 'alan' ? 'A' : r.responsavel === 'vanessa' ? 'V' : 'F'}</div>
-                <div className="tx-info">
-                  <div className="tx-desc">{r.descricao}</div>
-                  <div className="tx-meta">{r.data} · {r.categoria} · {r.responsavel === 'alan' ? 'Alan' : r.responsavel === 'vanessa' ? 'Vanessa' : 'Família'}</div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div className="tx-val in">+{formatBRL(r.valor)}</div>
-                  <StatusBadge status={r.status} />
-                </div>
-              </div>
-            ))}
+        <div className="panel-header"><div className="panel-title">Lançamentos — clique para editar</div></div>
+        {loading ? <div style={{ display: 'flex', justifyContent: 'center', padding: 24 }}><Spinner /></div>
+        : receitas.length === 0 ? <EmptyState icon="arrow-down-circle" text="Nenhuma receita neste mês." />
+        : receitas.map(r => (
+          <div key={r.id} className="tx-item" style={{ cursor: 'pointer', marginBottom: 8 }} onClick={() => setEditando(r)}>
+            <div className={`avatar ${r.responsavel}`}>{r.responsavel === 'alan' ? 'A' : r.responsavel === 'vanessa' ? 'V' : 'F'}</div>
+            <div className="tx-info">
+              <div className="tx-desc">{r.descricao}</div>
+              <div className="tx-meta">{r.data} · {r.categoria}</div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div className="tx-val in">+{formatBRL(r.valor)}</div>
+              <StatusBadge status={r.status} />
+            </div>
           </div>
-        )}
+        ))}
       </div>
 
-      <LancamentoRapido open={modalOpen} onClose={() => { setModalOpen(false); recarregar() }} />
+      {editando && <ModalEditar item={editando} tipo="receita" categorias={categorias} onClose={() => setEditando(null)} onSalvo={carregar} />}
+      <LancamentoRapido open={modalOpen} onClose={() => { setModalOpen(false); carregar() }} />
     </div>
   )
 }
 
 // ─── DESPESAS ──────────────────────────────────────────────────
-const CORES = ['#4ADE80', '#60A5FA', '#F87171', '#FCD34D', '#A78BFA', '#34D399', '#F97316', '#E879F9']
-
 export function Despesas() {
-  const { dados, recarregar } = useFinanceiro()
+  const [mes, setMes] = useState(mesAtualStr())
+  const [despesas, setDespesas] = useState([])
+  const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
-  const despesas = dados?.despesas || []
+  const [editando, setEditando] = useState(null)
+  const [categorias, setCategorias] = useState([])
+  const meses = getMeses()
+  const hoje = new Date().toISOString().split('T')[0]
 
-  const total = despesas.reduce((s, d) => s + Number(d.valor), 0)
+  useEffect(() => { carregar() }, [mes])
 
-  // Agrupar por categoria
-  const porCategoria = despesas.reduce((acc, d) => {
+  async function carregar() {
+    setLoading(true)
+    const inicio = `${mes}-01`
+    const fimDate = new Date(mes.split('-')[0], mes.split('-')[1], 0)
+    const fim = fimDate.toISOString().split('T')[0]
+    const [{ data: desp }, { data: cats }] = await Promise.all([
+      supabase.from('despesas').select('*').gte('data', inicio).lte('data', fim).order('data', { ascending: false }),
+      supabase.from('categorias_custom').select('*').eq('tipo', 'despesa').order('nome')
+    ])
+    setDespesas(desp || [])
+    setCategorias(cats || [])
+    setLoading(false)
+  }
+
+  const pagas = despesas.filter(d => d.status === 'paga')
+  const pendentes = despesas.filter(d => d.status !== 'paga')
+  const atrasadas = pendentes.filter(d => d.data < hoje)
+  const total = pagas.reduce((s, d) => s + Number(d.valor), 0)
+  const totalPendente = pendentes.reduce((s, d) => s + Number(d.valor), 0)
+
+  const porCategoria = pagas.reduce((acc, d) => {
     acc[d.categoria] = (acc[d.categoria] || 0) + Number(d.valor)
     return acc
   }, {})
@@ -85,77 +244,101 @@ export function Despesas() {
       <div className="page-header">
         <div>
           <div className="page-title">Despesas</div>
-          <div className="page-sub">Lançamento rápido — menos de 5 segundos</div>
+          <div className="page-sub">Clique em qualquer lançamento para editar</div>
         </div>
-        <button className="btn btn-primary" onClick={() => setModalOpen(true)}>
-          <i className="ti ti-plus" />Lançar gasto
-        </button>
-      </div>
-
-      <div className="cards-grid-3">
-        <MetricCard label="Total do mês" value={formatBRL(total)} color="amber" />
-        <MetricCard label="Lançamentos" value={despesas.length} color="" />
-        <MetricCard label="Média diária" value={formatBRL(total / 30)} color="" />
-      </div>
-
-      <div className="row-2">
-        <div className="panel">
-          <div className="panel-header"><div className="panel-title">Por categoria</div></div>
-          {pieData.length > 0 ? (
-            <>
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} dataKey="value">
-                    {pieData.map((_, i) => <Cell key={i} fill={CORES[i % CORES.length]} />)}
-                  </Pie>
-                  <Tooltip formatter={v => formatBRL(v)} />
-                </PieChart>
-              </ResponsiveContainer>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 12px', marginTop: 8 }}>
-                {pieData.map((d, i) => (
-                  <div key={d.name} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text2)' }}>
-                    <div style={{ width: 8, height: 8, borderRadius: 2, background: CORES[i % CORES.length] }} />
-                    {d.name} · {formatBRL(d.value)}
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : <EmptyState icon="chart-pie" text="Sem dados para exibir" />}
-        </div>
-
-        <div className="panel">
-          <div className="panel-header"><div className="panel-title">Maiores gastos</div></div>
-          {pieData.slice(0, 5).map((d, i) => (
-            <div key={d.name} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: i < 4 ? '1px solid var(--border)' : 'none' }}>
-              <div style={{ width: 28, height: 28, borderRadius: 6, background: 'var(--bg3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: CORES[i] }}>{i + 1}</div>
-              <div style={{ flex: 1, fontSize: 13 }}>{d.name}</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--red)' }}>{formatBRL(d.value)}</div>
-            </div>
-          ))}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <select className="form-input" value={mes} onChange={e => setMes(e.target.value)} style={{ width: 'auto' }}>
+            {meses.map(m => <option key={m.val} value={m.val}>{m.label}</option>)}
+          </select>
+          <button className="btn btn-primary" onClick={() => setModalOpen(true)}>
+            <i className="ti ti-plus" />Lançar
+          </button>
         </div>
       </div>
 
-      <div className="panel">
-        <div className="panel-header"><div className="panel-title">Todos os lançamentos</div></div>
-        {despesas.length === 0 ? (
-          <EmptyState icon="arrow-up-circle" text="Nenhuma despesa este mês." />
-        ) : (
-          <div className="tx-list">
-            {despesas.map(d => (
-              <div key={d.id} className="tx-item">
-                <div className="tx-icon out"><i className="ti ti-arrow-up" /></div>
+      <div className="cards-grid" style={{ gridTemplateColumns: 'repeat(3,1fr)' }}>
+        <MetricCard label="Pagas" value={formatBRL(total)} color="green" sub={`${pagas.length} lançamentos`} subColor="var(--text3)" />
+        <MetricCard label="Pendentes" value={formatBRL(totalPendente)} color="amber" sub={`${pendentes.length} conta(s)`} subColor="var(--text3)" />
+        <MetricCard label="Atrasadas" value={atrasadas.length} color={atrasadas.length > 0 ? 'red' : ''} sub={atrasadas.length > 0 ? formatBRL(atrasadas.reduce((s,d) => s+Number(d.valor),0)) : 'Nenhuma'} subColor={atrasadas.length > 0 ? 'var(--red)' : 'var(--green)'} />
+      </div>
+
+      {/* Atrasadas em destaque */}
+      {atrasadas.length > 0 && (
+        <div className="panel" style={{ marginBottom: 16, border: '1px solid var(--red-dim)' }}>
+          <div className="panel-header">
+            <div className="panel-title" style={{ color: 'var(--red)' }}><i className="ti ti-alert-circle" />Atrasadas — clique para editar ou pagar</div>
+          </div>
+          {atrasadas.map(d => {
+            const dias = Math.floor((new Date(hoje) - new Date(d.data)) / (1000*60*60*24))
+            return (
+              <div key={d.id} className="tx-item" style={{ cursor: 'pointer', marginBottom: 8, background: 'var(--red-bg)' }} onClick={() => setEditando(d)}>
+                <div className="tx-icon out"><i className="ti ti-alert-circle" /></div>
                 <div className="tx-info">
                   <div className="tx-desc">{d.descricao}</div>
-                  <div className="tx-meta">{d.data} · {d.categoria} · {d.responsavel === 'alan' ? 'Alan' : d.responsavel === 'vanessa' ? 'Vanessa' : 'Família'}</div>
+                  <div className="tx-meta" style={{ color: 'var(--red)' }}>Venceu em {d.data} · {dias} dia(s) atrasada</div>
                 </div>
                 <div className="tx-val out">-{formatBRL(d.valor)}</div>
               </div>
+            )
+          })}
+        </div>
+      )}
+
+      {/* Gráfico */}
+      {pieData.length > 0 && (
+        <div className="row-2" style={{ marginBottom: 16 }}>
+          <div className="panel">
+            <div className="panel-header"><div className="panel-title">Por categoria (pagas)</div></div>
+            <ResponsiveContainer width="100%" height={180}>
+              <PieChart>
+                <Pie data={pieData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} dataKey="value">
+                  {pieData.map((_, i) => <Cell key={i} fill={CORES[i % CORES.length]} />)}
+                </Pie>
+                <Tooltip formatter={v => formatBRL(v)} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="panel">
+            <div className="panel-header"><div className="panel-title">Maiores gastos</div></div>
+            {pieData.slice(0,5).map((d,i) => (
+              <div key={d.name} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 0', borderBottom: i<4?'1px solid var(--border)':'none' }}>
+                <div style={{ width:8, height:8, borderRadius:2, background:CORES[i], flexShrink:0 }} />
+                <div style={{ flex:1, fontSize:13 }}>{d.name}</div>
+                <div style={{ fontSize:13, fontWeight:600, color:'var(--red)' }}>{formatBRL(d.value)}</div>
+              </div>
             ))}
           </div>
-        )}
+        </div>
+      )}
+
+      {/* Lista completa */}
+      <div className="panel">
+        <div className="panel-header"><div className="panel-title">Todos os lançamentos</div></div>
+        {loading ? <div style={{ display:'flex', justifyContent:'center', padding:24 }}><Spinner /></div>
+        : despesas.length === 0 ? <EmptyState icon="arrow-up-circle" text="Nenhuma despesa neste mês." />
+        : despesas.map(d => {
+          const atrasada = d.status !== 'paga' && d.data < hoje
+          return (
+            <div key={d.id} className="tx-item" style={{ cursor:'pointer', marginBottom:8, background: atrasada ? 'var(--red-bg)' : d.status !== 'paga' ? 'var(--amber-bg)' : 'var(--bg3)' }}
+              onClick={() => setEditando(d)}>
+              <div className="tx-icon out"><i className="ti ti-arrow-up" /></div>
+              <div className="tx-info">
+                <div className="tx-desc">{d.descricao}</div>
+                <div className="tx-meta">{d.data} · {d.categoria} · {d.responsavel === 'alan' ? 'Alan' : d.responsavel === 'vanessa' ? 'Vanessa' : 'Família'}</div>
+              </div>
+              <div style={{ textAlign:'right' }}>
+                <div className="tx-val out">-{formatBRL(d.valor)}</div>
+                <span className={`debt-tag ${atrasada ? 'neg' : d.status === 'paga' ? 'ok' : 'prog'}`}>
+                  {atrasada ? 'Atrasada' : d.status === 'paga' ? 'Paga' : 'Pendente'}
+                </span>
+              </div>
+            </div>
+          )
+        })}
       </div>
 
-      <LancamentoRapido open={modalOpen} onClose={() => { setModalOpen(false); recarregar() }} />
+      {editando && <ModalEditar item={editando} tipo="despesa" categorias={categorias} onClose={() => setEditando(null)} onSalvo={carregar} />}
+      <LancamentoRapido open={modalOpen} onClose={() => { setModalOpen(false); carregar() }} />
     </div>
   )
 }
@@ -173,14 +356,14 @@ export function Dividas() {
 
   const dividasOrdenadas = [...dividas].sort((a, b) => {
     if (estrategia === 'bola') return Number(a.valor_atual) - Number(b.valor_atual)
-    if (estrategia === 'avalanche') return (Number(b.taxa_juros) || 0) - (Number(a.taxa_juros) || 0)
+    if (estrategia === 'avalanche') return (Number(b.taxa_juros)||0) - (Number(a.taxa_juros)||0)
     return Number(b.valor_atual) - Number(a.valor_atual)
   })
 
   const textos = {
-    bola: 'Pague as menores dívidas primeiro para ganhar motivação e momentum. Cada dívida quitada libera recursos para atacar a próxima.',
-    avalanche: 'Pague as dívidas com maiores juros primeiro. Você pagará menos no total, mesmo que demore mais para ter a primeira vitória.',
-    inteligente: 'A IA combina as duas estratégias: quita a menor dívida negativada para melhorar o score rapidamente, depois ataca as com maiores juros. Melhor custo-benefício.'
+    bola: 'Pague as menores dívidas primeiro para ganhar motivação e momentum.',
+    avalanche: 'Pague as dívidas com maiores juros primeiro. Você pagará menos no total.',
+    inteligente: 'A IA combina as duas estratégias: quita a menor negativada para melhorar o score, depois ataca as com maiores juros.'
   }
 
   return (
@@ -198,53 +381,35 @@ export function Dividas() {
       <div className="cards-grid-3">
         <MetricCard label="Total em dívidas" value={formatBRL(totalDividas)} color="red" />
         <MetricCard label="Negativadas" value={negativadas} color="amber" sub={`${emDia} em dia`} subColor="var(--green)" />
-        <MetricCard label="Quitação estimada" value="Dez/2027" color="" />
+        <MetricCard label="Quitação estimada" value="Dez/2027" />
       </div>
 
       <div className="panel" style={{ marginBottom: 16 }}>
-        <div className="panel-header">
-          <div className="panel-title"><i className="ti ti-trophy" />Estratégia de Pagamento</div>
-        </div>
+        <div className="panel-header"><div className="panel-title"><i className="ti ti-trophy" />Estratégia de Pagamento</div></div>
         <div className="tabs">
-          {[['bola', 'Bola de Neve'], ['avalanche', 'Avalanche'], ['inteligente', '✦ Inteligente']].map(([v, l]) => (
-            <button key={v} className={`tab ${estrategia === v ? 'active' : ''}`} onClick={() => setEstrategia(v)}>{l}</button>
+          {[['bola','Bola de Neve'],['avalanche','Avalanche'],['inteligente','✦ Inteligente']].map(([v,l]) => (
+            <button key={v} className={`tab ${estrategia===v?'active':''}`} onClick={() => setEstrategia(v)}>{l}</button>
           ))}
         </div>
         <div className="ai-diagnostico">{textos[estrategia]}</div>
       </div>
 
       <div className="panel">
-        <div className="panel-header">
-          <div className="panel-title">
-            Suas dívidas
-            <span style={{ fontSize: 11, color: 'var(--text3)', fontWeight: 400 }}>
-              ordenadas pela estratégia ativa
-            </span>
-          </div>
-        </div>
-        {dividas.length === 0 ? (
-          <EmptyState icon="alert-triangle" text="Nenhuma dívida cadastrada. Use o botão acima para começar." />
-        ) : (
-          dividasOrdenadas.map((d, i) => (
-            <div key={d.id} className="debt-item">
-              <div className="debt-icon">
-                <span style={{ fontSize: 13, fontWeight: 700, color: i === 0 ? 'var(--red)' : 'var(--text3)' }}>#{i + 1}</span>
-              </div>
-              <div className="debt-info">
-                <div className="debt-name">{d.credor}</div>
-                <div className="debt-orig">
-                  Original: {formatBRL(d.valor_original)}
-                  {d.taxa_juros && ` · ${d.taxa_juros}%/mês`}
-                  {d.valor_parcela && ` · Parcela: ${formatBRL(d.valor_parcela)}`}
-                </div>
-              </div>
-              <div className="debt-right">
-                <div className="debt-val">{formatBRL(d.valor_atual)}</div>
-                <StatusBadge status={d.status} />
-              </div>
+        <div className="panel-header"><div className="panel-title">Suas dívidas</div></div>
+        {dividas.length === 0 ? <EmptyState icon="alert-triangle" text="Nenhuma dívida cadastrada." />
+        : dividasOrdenadas.map((d, i) => (
+          <div key={d.id} className="debt-item">
+            <div className="debt-icon"><span style={{ fontSize:13, fontWeight:700, color: i===0?'var(--red)':'var(--text3)' }}>#{i+1}</span></div>
+            <div className="debt-info">
+              <div className="debt-name">{d.credor}</div>
+              <div className="debt-orig">Original: {formatBRL(d.valor_original)}{d.taxa_juros ? ` · ${d.taxa_juros}%/mês` : ''}{d.valor_parcela ? ` · Parcela: ${formatBRL(d.valor_parcela)}` : ''}</div>
             </div>
-          ))
-        )}
+            <div className="debt-right">
+              <div className="debt-val">{formatBRL(d.valor_atual)}</div>
+              <StatusBadge status={d.status} />
+            </div>
+          </div>
+        ))}
       </div>
 
       <LancamentoRapido open={modalOpen} onClose={() => { setModalOpen(false); recarregar() }} />
@@ -254,7 +419,7 @@ export function Dividas() {
 
 // ─── ACORDOS ──────────────────────────────────────────────────
 export function Acordos() {
-  const { dados, recarregar } = useFinanceiro()
+  const { recarregar } = useFinanceiro()
   const [modalOpen, setModalOpen] = useState(false)
 
   return (
@@ -268,16 +433,14 @@ export function Acordos() {
           <i className="ti ti-plus" />Registrar acordo
         </button>
       </div>
-
       <div className="panel">
         <EmptyState icon="handshake" text="Registre ofertas do Serasa Limpa Nome e negociações para análise automática da IA." />
         <div style={{ marginTop: 16 }}>
           <div className="ai-diagnostico">
-            <strong>Como usar:</strong> Quando receber uma oferta do Serasa ou de um credor, clique em "Registrar acordo", preencha os valores e a IA analisará automaticamente se vale a pena aceitar, qual o impacto no orçamento e no score.
+            <strong>Como usar:</strong> Quando receber uma oferta do Serasa ou de um credor, clique em "Registrar acordo", preencha os valores e a IA analisará automaticamente se vale a pena aceitar.
           </div>
         </div>
       </div>
-
       <LancamentoRapido open={modalOpen} onClose={() => { setModalOpen(false); recarregar() }} />
     </div>
   )
