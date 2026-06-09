@@ -2,9 +2,9 @@ import React, { useState, useEffect } from 'react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { useFinanceiro } from '../context/FinanceiroContext'
-import { formatBRL } from '../lib/supabase'
+import { formatBRL, supabase } from '../lib/supabase'
 import { gerarDiagnosticoAutomatico } from '../lib/ia'
-import { MetricCard, AIBadge, ProgressBar, Spinner } from '../components/UI'
+import { AIBadge, Spinner } from '../components/UI'
 import LancamentoRapido from '../components/LancamentoRapido'
 
 export default function Dashboard() {
@@ -12,8 +12,32 @@ export default function Dashboard() {
   const [diagnostico, setDiagnostico] = useState('')
   const [loadingIA, setLoadingIA] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
+  const [contasAtrasadas, setContasAtrasadas] = useState([])
+  const [contasPendentes, setContasPendentes] = useState([])
+  const [receitasPendentes, setReceitasPendentes] = useState([])
+  const [loadingExtra, setLoadingExtra] = useState(true)
 
-  // Diagnóstico só é gerado quando o usuário clicar — não automático
+  useEffect(() => {
+    if (dados) carregarExtra()
+  }, [dados])
+
+  async function carregarExtra() {
+    setLoadingExtra(true)
+    const hoje = new Date().toISOString().split('T')[0]
+    const mesInicio = hoje.slice(0, 7) + '-01'
+    const mesFim = new Date(hoje.slice(0, 4), Number(hoje.slice(5, 7)), 0).toISOString().split('T')[0]
+
+    const [{ data: atras }, { data: pend }, { data: recPend }] = await Promise.all([
+      supabase.from('despesas').select('*').neq('status', 'paga').lt('data', hoje).order('data'),
+      supabase.from('despesas').select('*').neq('status', 'paga').gte('data', hoje).lte('data', mesFim).order('data'),
+      supabase.from('receitas').select('*').neq('status', 'recebida').gte('data', mesInicio).lte('data', mesFim).order('data'),
+    ])
+
+    setContasAtrasadas(atras || [])
+    setContasPendentes(pend || [])
+    setReceitasPendentes(recPend || [])
+    setLoadingExtra(false)
+  }
 
   async function carregarDiagnostico() {
     if (!dados) return
@@ -22,45 +46,40 @@ export default function Dashboard() {
       const texto = await gerarDiagnosticoAutomatico(dados)
       setDiagnostico(texto)
     } catch {
-      setDiagnostico('Conecte a IA Consultora para diagnósticos automáticos.')
+      setDiagnostico('Configure a IA para diagnósticos automáticos.')
     } finally {
       setLoadingIA(false)
     }
   }
 
+  async function marcarRecebida(e, id) {
+    e.stopPropagation()
+    await supabase.from('receitas').update({ status: 'recebida' }).eq('id', id)
+    recarregar(); carregarExtra()
+  }
+
+  async function marcarPaga(e, id) {
+    e.stopPropagation()
+    await supabase.from('despesas').update({ status: 'paga' }).eq('id', id)
+    recarregar(); carregarExtra()
+  }
+
   if (loading || !dados) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
-        <Spinner />
-      </div>
-    )
+    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}><Spinner /></div>
   }
 
-  const { totalRecebido, totalDespesas, saldo, gastoSeguroHoje, gastoSeguroSemana, gastoSeguroMes, semaforo, dividas, receitas, despesas, objetivos } = dados
+  const { totalRecebido, totalDespesas, saldo, semaforo } = dados
 
-  const semaforoConfig = {
-    verde: { dots: [true, false, false], texto: 'Pode gastar com tranquilidade', cor: 'var(--green)' },
-    amarelo: { dots: [false, true, false], texto: 'Atenção — monitore os gastos', cor: 'var(--amber)' },
-    vermelho: { dots: [false, false, true], texto: 'Não recomendado gastar agora', cor: 'var(--red)' },
-  }
-  const sem = semaforoConfig[semaforo]
-
-  const totalDividas = dividas.reduce((s, d) => s + Number(d.valor_atual), 0)
-  const dividasQuitadas = dividas.filter(d => d.status === 'quitado').reduce((s, d) => s + Number(d.valor_original), 0)
-  const totalOriginalDividas = dividas.reduce((s, d) => s + Number(d.valor_original), 0) + dividasQuitadas
-  const pctDividas = totalOriginalDividas > 0 ? ((dividasQuitadas / totalOriginalDividas) * 100) : 0
-
-  const ultimosLancamentos = [
-    ...receitas.slice(0, 3).map(r => ({ ...r, tipo: 'receita' })),
-    ...despesas.slice(0, 3).map(d => ({ ...d, tipo: 'despesa' }))
-  ].sort((a, b) => new Date(b.data) - new Date(a.data)).slice(0, 6)
-
-  const receitasAlan = receitas.filter(r => r.responsavel === 'alan').reduce((s, r) => s + Number(r.valor), 0)
-  const receitasVanessa = receitas.filter(r => r.responsavel === 'vanessa').reduce((s, r) => s + Number(r.valor), 0)
+  const totalAtrasado = contasAtrasadas.reduce((s, c) => s + Number(c.valor), 0)
+  const totalPendenteMes = contasPendentes.reduce((s, c) => s + Number(c.valor), 0)
+  const totalVaiEntrar = receitasPendentes.reduce((s, r) => s + Number(r.valor), 0)
 
   const hoje = new Date()
-  const nomeHoje = format(hoje, "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })
+  const nomeHoje = format(hoje, "EEEE, d 'de' MMMM", { locale: ptBR })
   const saudacao = hoje.getHours() < 12 ? 'Bom dia' : hoje.getHours() < 18 ? 'Boa tarde' : 'Boa noite'
+
+  const semaforoCor = { verde: 'var(--green)', amarelo: 'var(--amber)', vermelho: 'var(--red)' }
+  const semaforoLabel = { verde: '● Pode gastar', amarelo: '● Atenção', vermelho: '● Cuidado' }
 
   return (
     <div>
@@ -74,179 +93,137 @@ export default function Dashboard() {
         </button>
       </div>
 
-      {/* Métricas principais */}
-      <div className="cards-grid">
-        <MetricCard
-          label="Saldo disponível"
-          value={formatBRL(saldo)}
-          color={saldo >= 0 ? 'green' : 'red'}
-          sub={saldo >= 0 ? '↑ No positivo' : '↓ No negativo'}
-          subColor={saldo >= 0 ? 'var(--green)' : 'var(--red)'}
-        />
-        <MetricCard
-          label="Entradas do mês"
-          value={formatBRL(totalRecebido)}
-          color="blue"
-          sub="Alan + Vanessa"
-          subColor="var(--text3)"
-        />
-        <MetricCard
-          label="Saídas do mês"
-          value={formatBRL(totalDespesas)}
-          color="amber"
-          sub={`${despesas.length} lançamentos`}
-          subColor="var(--text3)"
-        />
-        <MetricCard
-          label="Resultado do mês"
-          value={formatBRL(saldo)}
-          color={saldo >= 0 ? 'green' : 'red'}
-          sub={saldo >= 0 ? '✓ Positivo' : '✗ Negativo'}
-          subColor={saldo >= 0 ? 'var(--green)' : 'var(--red)'}
-        />
+      {/* 5 cards principais — diretos ao ponto */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginBottom: 20 }}>
+
+        {/* Tenho agora */}
+        <div style={{ background: 'var(--bg2)', border: `2px solid ${saldo >= 0 ? 'var(--green-dim)' : 'var(--red-dim)'}`, borderRadius: 'var(--radius-lg)', padding: '20px', gridColumn: '1 / -1' }}>
+          <div style={{ fontSize: 12, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 6 }}>💰 Tenho agora</div>
+          <div style={{ fontSize: 36, fontWeight: 700, color: saldo >= 0 ? 'var(--green)' : 'var(--red)', letterSpacing: '-1px' }}>{formatBRL(saldo)}</div>
+          <div style={{ fontSize: 12, color: semaforoCor[semaforo], marginTop: 6, fontWeight: 500 }}>{semaforoLabel[semaforo]}</div>
+          <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
+            Recebido este mês: {formatBRL(totalRecebido)} · Pago: {formatBRL(totalDespesas)}
+          </div>
+        </div>
+
+        {/* Vai entrar */}
+        <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px' }}>
+          <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 6 }}>📥 Vai entrar</div>
+          <div style={{ fontSize: 24, fontWeight: 600, color: 'var(--blue)' }}>{formatBRL(totalVaiEntrar)}</div>
+          <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>{receitasPendentes.length} receita(s) prevista(s)</div>
+        </div>
+
+        {/* Tenho que pagar este mês */}
+        <div style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px' }}>
+          <div style={{ fontSize: 11, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: 6 }}>📤 Tenho que pagar</div>
+          <div style={{ fontSize: 24, fontWeight: 600, color: 'var(--amber)' }}>{formatBRL(totalPendenteMes)}</div>
+          <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>{contasPendentes.length} conta(s) este mês</div>
+        </div>
+
       </div>
 
-      {/* Semáforo + IA */}
-      <div className="semaforo-widget">
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <span style={{ fontSize: 14, fontWeight: 600 }}>Semáforo Financeiro</span>
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            {['verde','amarelo','vermelho'].map((s, i) => {
-              const ativo = semaforo === s
-              const cores = { verde: 'var(--green)', amarelo: 'var(--amber)', vermelho: 'var(--red)' }
-              const bgs = { verde: 'var(--green-dim)', amarelo: 'var(--amber-bg)', vermelho: 'var(--red-bg)' }
-              return (
-                <div key={s} style={{
-                  width: 28, height: 28, borderRadius: '50%',
-                  background: ativo ? bgs[s] : 'transparent',
-                  border: `3px solid ${ativo ? cores[s] : 'var(--border)'}`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 10, fontWeight: 700, color: ativo ? cores[s] : 'var(--text3)',
-                  opacity: ativo ? 1 : 0.25
-                }}>●</div>
-              )
-            })}
+      {/* Atrasado — destaque se tiver */}
+      {contasAtrasadas.length > 0 && (
+        <div style={{ background: 'var(--red-bg)', border: '1px solid var(--red-dim)', borderRadius: 'var(--radius-lg)', padding: '16px 20px', marginBottom: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <i className="ti ti-alert-circle" style={{ color: 'var(--red)', fontSize: 18 }} />
+              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--red)' }}>⚠️ Atrasado — pague agora</span>
+            </div>
+            <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--red)' }}>{formatBRL(totalAtrasado)}</span>
           </div>
-        </div>
-        <div style={{ fontSize: 13, color: sem.cor, marginBottom: 12, fontWeight: 500 }}>
-          {sem.texto}
-        </div>
-        <button
-          onClick={carregarDiagnostico}
-          disabled={loadingIA}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-        >
-          <AIBadge text={loadingIA ? "Analisando..." : "▶ Gerar diagnóstico"} />
-        </button>
-        <div className="ai-diagnostico">
-          {loadingIA
-            ? <><Spinner /> <span style={{ marginLeft: 8, color: 'var(--text3)', fontSize: 13 }}>Analisando sua situação financeira...</span></>
-            : diagnostico || 'Configure a chave da API para receber diagnósticos automáticos.'}
-        </div>
-        <div className="safe-spend" style={{ marginTop: 12 }}>
-          <div className="safe-item">
-            <div className="safe-label">Hoje</div>
-            <div className="safe-val">{formatBRL(gastoSeguroHoje)}</div>
-          </div>
-          <div className="safe-item">
-            <div className="safe-label">Esta semana</div>
-            <div className="safe-val">{formatBRL(gastoSeguroSemana)}</div>
-          </div>
-          <div className="safe-item">
-            <div className="safe-label">Este mês</div>
-            <div className="safe-val">{formatBRL(gastoSeguroMes)}</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="row-3">
-        {/* Lançamentos recentes */}
-        <div className="panel">
-          <div className="panel-header">
-            <div className="panel-title"><i className="ti ti-clock" />Lançamentos recentes</div>
-          </div>
-          <div className="tx-list">
-            {ultimosLancamentos.length === 0 && (
-              <div style={{ textAlign: 'center', color: 'var(--text3)', padding: 24, fontSize: 13 }}>
-                Nenhum lançamento ainda.<br />Use o botão Lançar para começar.
+          {contasAtrasadas.slice(0, 3).map(c => (
+            <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', background: 'rgba(0,0,0,0.2)', borderRadius: 'var(--radius-sm)', marginBottom: 6 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 500, color: 'var(--text)' }}>{c.descricao}</div>
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>Venceu {c.data}</div>
               </div>
-            )}
-            {ultimosLancamentos.map(item => (
-              <div key={item.id} className="tx-item">
-                <div className={`tx-icon ${item.tipo === 'receita' ? 'in' : 'out'}`}>
-                  <i className={`ti ti-arrow-${item.tipo === 'receita' ? 'down' : 'up'}`} />
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--red)' }}>{formatBRL(c.valor)}</div>
+              <button className="btn btn-sm" style={{ background: 'var(--green-dim)', color: 'var(--green)', border: 'none' }} onClick={e => marcarPaga(e, c.id)}>
+                <i className="ti ti-check" />Pagar
+              </button>
+            </div>
+          ))}
+          {contasAtrasadas.length > 3 && (
+            <div style={{ fontSize: 12, color: 'var(--text3)', textAlign: 'center', marginTop: 4 }}>
+              + {contasAtrasadas.length - 3} conta(s) atrasada(s) — veja em Contas a Pagar
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="row-2">
+        {/* Vai entrar — lista */}
+        {receitasPendentes.length > 0 && (
+          <div className="panel">
+            <div className="panel-header">
+              <div className="panel-title"><i className="ti ti-arrow-down-circle" style={{ color: 'var(--blue)' }} />Vai entrar este mês</div>
+            </div>
+            {receitasPendentes.slice(0, 4).map(r => (
+              <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', background: 'var(--bg3)', borderRadius: 'var(--radius-sm)', marginBottom: 8 }}>
+                <div className={`avatar ${r.responsavel}`} style={{ width: 28, height: 28, fontSize: 11 }}>
+                  {r.responsavel === 'alan' ? 'A' : r.responsavel === 'vanessa' ? 'V' : 'F'}
                 </div>
-                <div className="tx-info">
-                  <div className="tx-desc">{item.descricao}</div>
-                  <div className="tx-meta">
-                    {item.data} · {item.categoria}
-                    {item.responsavel && ` · ${item.responsavel === 'alan' ? 'Alan' : item.responsavel === 'vanessa' ? 'Vanessa' : 'Família'}`}
-                  </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500 }}>{r.descricao}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text3)' }}>{r.data} · {r.status === 'confirmada' ? 'Confirmada' : 'Prevista'}</div>
                 </div>
-                <div className={`tx-val ${item.tipo === 'receita' ? 'in' : 'out'}`}>
-                  {item.tipo === 'receita' ? '+' : '-'}{formatBRL(item.valor)}
-                </div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--blue)' }}>{formatBRL(r.valor)}</div>
+                <button className="btn btn-sm" style={{ background: 'var(--green-dim)', color: 'var(--green)', border: 'none' }} onClick={e => marcarRecebida(e, r.id)}>
+                  <i className="ti ti-check" />Recebi
+                </button>
               </div>
             ))}
           </div>
+        )}
+
+        {/* Vai sair — lista */}
+        {contasPendentes.length > 0 && (
+          <div className="panel">
+            <div className="panel-header">
+              <div className="panel-title"><i className="ti ti-arrow-up-circle" style={{ color: 'var(--amber)' }} />Vai sair este mês</div>
+            </div>
+            {contasPendentes.slice(0, 4).map(c => {
+              const dias = Math.floor((new Date(c.data) - new Date()) / (1000*60*60*24))
+              return (
+                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', background: 'var(--bg3)', borderRadius: 'var(--radius-sm)', marginBottom: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 13, fontWeight: 500 }}>{c.descricao}</div>
+                    <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+                      {c.data} · {dias === 0 ? 'Hoje!' : dias === 1 ? 'Amanhã!' : `${dias} dias`}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--amber)' }}>{formatBRL(c.valor)}</div>
+                  <button className="btn btn-sm" style={{ background: 'var(--green-dim)', color: 'var(--green)', border: 'none' }} onClick={e => marcarPaga(e, c.id)}>
+                    <i className="ti ti-check" />Pagar
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* IA Diagnóstico — sob demanda */}
+      <div className="panel" style={{ marginBottom: 16 }}>
+        <div className="panel-header">
+          <div className="panel-title"><i className="ti ti-sparkles" />Diagnóstico da IA</div>
+          <button onClick={carregarDiagnostico} disabled={loadingIA} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+            <AIBadge text={loadingIA ? 'Analisando...' : '▶ Gerar agora'} />
+          </button>
         </div>
-
-        {/* Coluna lateral */}
-        <div className="col-stack">
-          {/* Progresso dívidas */}
-          <div className="panel">
-            <div className="panel-header">
-              <div className="panel-title"><i className="ti ti-target" />Dívidas</div>
-            </div>
-            <div style={{ marginBottom: 10 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 6 }}>
-                <span style={{ color: 'var(--text2)' }}>Total: {formatBRL(totalDividas)}</span>
-                <span style={{ color: 'var(--green)' }}>{pctDividas.toFixed(0)}% quitado</span>
-              </div>
-              <ProgressBar pct={pctDividas} />
-            </div>
-            <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 2 }}>
-              {dividas[0] ? `Próxima: ${dividas[0].credor}` : 'Sem dívidas ativas'}
-            </div>
-            {dividas[0]?.valor_parcela && (
-              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--amber)' }}>
-                {formatBRL(dividas[0].valor_parcela)}
-                {dividas[0].data_vencimento ? ` · ${dividas[0].data_vencimento}` : ''}
-              </div>
-            )}
-          </div>
-
-          {/* Receitas por membro */}
-          <div className="panel">
-            <div className="panel-header">
-              <div className="panel-title"><i className="ti ti-users" />Receitas por membro</div>
-            </div>
-            <div className="member-row">
-              <div className="avatar alan">A</div>
-              <div className="member-info">
-                <div className="member-name">Alan</div>
-                <div className="member-role">MEI · Nota fiscal</div>
-              </div>
-              <div className="member-val">{formatBRL(receitasAlan)}</div>
-            </div>
-            <div className="member-row">
-              <div className="avatar vanessa">V</div>
-              <div className="member-info">
-                <div className="member-name">Vanessa</div>
-                <div className="member-role">Renda variável</div>
-              </div>
-              <div className="member-val">{formatBRL(receitasVanessa)}</div>
-            </div>
-          </div>
+        <div className="ai-diagnostico">
+          {loadingIA
+            ? <><Spinner /><span style={{ marginLeft: 8, color: 'var(--text3)', fontSize: 13 }}>Analisando sua situação...</span></>
+            : diagnostico || 'Clique em "▶ Gerar agora" para receber uma análise personalizada da sua situação financeira.'}
         </div>
       </div>
 
-      {/* FAB mobile */}
       <button className="mobile-fab" onClick={() => setModalOpen(true)}>
         <i className="ti ti-plus" />
       </button>
 
-      <LancamentoRapido open={modalOpen} onClose={() => { setModalOpen(false); recarregar() }} />
+      <LancamentoRapido open={modalOpen} onClose={() => { setModalOpen(false); recarregar(); carregarExtra() }} />
     </div>
   )
 }

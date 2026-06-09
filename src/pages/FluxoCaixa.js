@@ -85,7 +85,8 @@ export default function FluxoCaixa() {
     return acc
   }, {})
 
-  const datasOrdenadas = Object.keys(porData).sort((a, b) => new Date(b) - new Date(a))
+  const datasOrdenadas = Object.keys(porData).sort((a, b) => new Date(a) - new Date(b)).reverse()
+  // Futuros primeiro, depois passado — mas dentro do mês, mais próximo primeiro
 
   function formatData(data) {
     return new Date(data + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' })
