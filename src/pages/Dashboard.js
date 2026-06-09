@@ -13,9 +13,7 @@ export default function Dashboard() {
   const [loadingIA, setLoadingIA] = useState(false)
   const [modalOpen, setModalOpen] = useState(false)
 
-  useEffect(() => {
-    if (dados && !diagnostico) carregarDiagnostico()
-  }, [dados])
+  // Diagnóstico só é gerado quando o usuário clicar — não automático
 
   async function carregarDiagnostico() {
     if (!dados) return
@@ -133,7 +131,13 @@ export default function Dashboard() {
         <div style={{ fontSize: 13, color: sem.cor, marginBottom: 12, fontWeight: 500 }}>
           {sem.texto}
         </div>
-        <AIBadge text="Diagnóstico da IA" />
+        <button
+          onClick={carregarDiagnostico}
+          disabled={loadingIA}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+        >
+          <AIBadge text={loadingIA ? "Analisando..." : "▶ Gerar diagnóstico"} />
+        </button>
         <div className="ai-diagnostico">
           {loadingIA
             ? <><Spinner /> <span style={{ marginLeft: 8, color: 'var(--text3)', fontSize: 13 }}>Analisando sua situação financeira...</span></>
