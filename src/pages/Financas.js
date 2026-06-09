@@ -123,14 +123,22 @@ export function Receitas() {
     setReceitas(rec || []); setCategorias(cats || []); setLoading(false)
   }
 
+  async function marcarRecebida(e, id) {
+    e.stopPropagation()
+    await supabase.from('receitas').update({ status: 'recebida' }).eq('id', id)
+    showToast('✓ Receita marcada como recebida!')
+    carregar()
+  }
+
   const totalRecebido = receitas.filter(r=>r.status==='recebida').reduce((s,r)=>s+Number(r.valor),0)
   const totalConfirmado = receitas.filter(r=>['confirmada','recebida'].includes(r.status)).reduce((s,r)=>s+Number(r.valor),0)
   const totalPrevisto = receitas.reduce((s,r)=>s+Number(r.valor),0)
+  const pendentes = receitas.filter(r => r.status !== 'recebida')
 
   return (
     <div>
       <div className="page-header">
-        <div><div className="page-title">Receitas</div><div className="page-sub">Clique para editar</div></div>
+        <div><div className="page-title">Receitas</div><div className="page-sub">Clique para editar · botão verde para confirmar entrada</div></div>
         <div style={{display:'flex',gap:8}}>
           <select className="form-input" value={mes} onChange={e=>setMes(e.target.value)} style={{width:'auto'}}>
             {getMeses().map(m=><option key={m.val} value={m.val}>{m.label}</option>)}
@@ -138,13 +146,53 @@ export function Receitas() {
           <button className="btn btn-primary" onClick={()=>setModalOpen(true)}><i className="ti ti-plus"/>Nova</button>
         </div>
       </div>
+
       <div className="cards-grid-3">
         <MetricCard label="Previsto" value={formatBRL(totalPrevisto)} />
         <MetricCard label="Confirmado" value={formatBRL(totalConfirmado)} color="amber" />
         <MetricCard label="Recebido" value={formatBRL(totalRecebido)} color="green" />
       </div>
+
+      {/* Pendentes de receber em destaque */}
+      {pendentes.length > 0 && (
+        <div className="panel" style={{ marginBottom: 16, border: '1px solid var(--amber-dim)' }}>
+          <div className="panel-header">
+            <div className="panel-title" style={{ color: 'var(--amber)' }}>
+              <i className="ti ti-clock" />Aguardando entrada — clique em ✓ quando receber
+            </div>
+            <span style={{ fontSize: 13, color: 'var(--amber)', fontWeight: 700 }}>
+              {formatBRL(pendentes.reduce((s,r)=>s+Number(r.valor),0))}
+            </span>
+          </div>
+          {pendentes.map(r => (
+            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px', background: 'var(--amber-bg)', borderRadius: 'var(--radius-sm)', marginBottom: 8, cursor: 'pointer' }}
+              onClick={() => setEditando(r)}>
+              <div className={`avatar ${r.responsavel}`}>{r.responsavel==='alan'?'A':r.responsavel==='vanessa'?'V':'F'}</div>
+              <div className="tx-info">
+                <div className="tx-desc">{r.descricao}</div>
+                <div className="tx-meta">{r.data} · {r.categoria} · <span style={{ color: 'var(--amber)' }}>{r.status === 'confirmada' ? 'Confirmada' : 'Prevista'}</span></div>
+              </div>
+              <div style={{ textAlign: 'right', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ textAlign: 'right' }}>
+                  <div className="tx-val in">+{formatBRL(r.valor)}</div>
+                </div>
+                <button
+                  className="btn btn-sm"
+                  style={{ background: 'var(--green-dim)', color: 'var(--green)', border: '1px solid var(--green)', flexShrink: 0 }}
+                  onClick={e => marcarRecebida(e, r.id)}
+                  title="Marcar como recebida"
+                >
+                  <i className="ti ti-check" />Recebi
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Todas as receitas */}
       <div className="panel">
-        <div className="panel-header"><div className="panel-title">Lançamentos — clique para editar</div></div>
+        <div className="panel-header"><div className="panel-title">Todos os lançamentos</div></div>
         {loading ? <div style={{display:'flex',justifyContent:'center',padding:24}}><Spinner/></div>
         : receitas.length===0 ? <EmptyState icon="arrow-down-circle" text="Nenhuma receita neste mês." />
         : receitas.map(r=>(
@@ -154,13 +202,26 @@ export function Receitas() {
               <div className="tx-desc">{r.descricao}</div>
               <div className="tx-meta">{r.data} · {r.categoria}</div>
             </div>
-            <div style={{textAlign:'right'}}>
-              <div className="tx-val in">+{formatBRL(r.valor)}</div>
-              <StatusBadge status={r.status} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{textAlign:'right'}}>
+                <div className="tx-val in">+{formatBRL(r.valor)}</div>
+                <StatusBadge status={r.status} />
+              </div>
+              {r.status !== 'recebida' && (
+                <button
+                  className="btn btn-sm"
+                  style={{ background: 'var(--green-dim)', color: 'var(--green)', border: '1px solid var(--green)', flexShrink: 0 }}
+                  onClick={e => marcarRecebida(e, r.id)}
+                  title="Marcar como recebida"
+                >
+                  <i className="ti ti-check" />
+                </button>
+              )}
             </div>
           </div>
         ))}
       </div>
+
       {editando && <ModalEditar item={editando} tipo="receita" categorias={categorias} onClose={()=>setEditando(null)} onSalvo={carregar} />}
       <LancamentoRapido open={modalOpen} onClose={()=>{setModalOpen(false);carregar()}} />
     </div>
