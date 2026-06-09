@@ -14,20 +14,24 @@ const STATUS_RECEITA = [
   { value: 'prevista', label: '◯ Prevista' },
 ]
 
-export default function LancamentoRapido({ open, onClose }) {
+const STATUS_DESPESA = [
+  { value: 'paga', label: '✓ Paga' },
+  { value: 'pendente', label: '◯ Pendente' },
+]
+
+export default function LancamentoRapido({ open, onClose, defaultStatus = 'paga' }) {
   const [aba, setAba] = useState('despesa')
   const [loading, setSaving] = useState(false)
   const [categoriasDespesa, setCategoriasDespesa] = useState([])
   const [categoriasReceita, setCategoriasReceita] = useState([])
 
-  // Despesa
   const [valor, setValor] = useState('')
   const [descricao, setDescricao] = useState('')
   const [categoria, setCategoria] = useState('')
   const [responsavel, setResponsavel] = useState('familia')
   const [data, setData] = useState(new Date().toISOString().split('T')[0])
+  const [statusDespesa, setStatusDespesa] = useState(defaultStatus)
 
-  // Receita
   const [rValor, setRValor] = useState('')
   const [rDesc, setRDesc] = useState('')
   const [rCategoria, setRCategoria] = useState('')
@@ -35,7 +39,6 @@ export default function LancamentoRapido({ open, onClose }) {
   const [rStatus, setRStatus] = useState('recebida')
   const [rData, setRData] = useState(new Date().toISOString().split('T')[0])
 
-  // Dívida
   const [dCredor, setDCredor] = useState('')
   const [dValorOrig, setDValorOrig] = useState('')
   const [dValorAtual, setDValorAtual] = useState('')
@@ -44,8 +47,8 @@ export default function LancamentoRapido({ open, onClose }) {
   const [dParcela, setDParcela] = useState('')
 
   useEffect(() => {
-    if (open) carregarCategorias()
-  }, [open])
+    if (open) { carregarCategorias(); setStatusDespesa(defaultStatus) }
+  }, [open, defaultStatus])
 
   async function carregarCategorias() {
     const { data } = await supabase.from('categorias_custom').select('*').order('nome')
@@ -73,14 +76,15 @@ export default function LancamentoRapido({ open, onClose }) {
         categoria,
         responsavel,
         data,
+        status: statusDespesa,
         estabelecimento: descricao || null,
       })
       if (descricao) await salvarCategoriaAprendida(descricao, categoria)
-      showToast('✓ Despesa lançada!')
+      showToast(statusDespesa === 'paga' ? '✓ Despesa lançada!' : '✓ Conta agendada!')
       resetDespesa()
       onClose()
     } catch (e) {
-      showToast('Erro ao salvar: ' + e.message)
+      showToast('Erro: ' + e.message)
     } finally {
       setSaving(false)
     }
@@ -102,7 +106,7 @@ export default function LancamentoRapido({ open, onClose }) {
       resetReceita()
       onClose()
     } catch (e) {
-      showToast('Erro ao salvar: ' + e.message)
+      showToast('Erro: ' + e.message)
     } finally {
       setSaving(false)
     }
@@ -124,13 +128,13 @@ export default function LancamentoRapido({ open, onClose }) {
       resetDivida()
       onClose()
     } catch (e) {
-      showToast('Erro ao salvar: ' + e.message)
+      showToast('Erro: ' + e.message)
     } finally {
       setSaving(false)
     }
   }
 
-  function resetDespesa() { setValor(''); setDescricao(''); setResponsavel('familia'); setData(new Date().toISOString().split('T')[0]) }
+  function resetDespesa() { setValor(''); setDescricao(''); setResponsavel('familia'); setData(new Date().toISOString().split('T')[0]); setStatusDespesa(defaultStatus) }
   function resetReceita() { setRValor(''); setRDesc(''); setRResponsavel('alan'); setRStatus('recebida'); setRData(new Date().toISOString().split('T')[0]) }
   function resetDivida() { setDCredor(''); setDValorOrig(''); setDValorAtual(''); setDStatus('negativado'); setDJuros(''); setDParcela('') }
 
@@ -145,25 +149,29 @@ export default function LancamentoRapido({ open, onClose }) {
       {aba === 'despesa' && (
         <>
           <div className="form-group">
+            <label className="form-label">Status</label>
+            <div className="tags">
+              {STATUS_DESPESA.map(s => (
+                <button key={s.value} className={`tag ${statusDespesa === s.value ? 'sel' : ''}`} onClick={() => setStatusDespesa(s.value)}>{s.label}</button>
+              ))}
+            </div>
+          </div>
+          <div className="form-group">
             <label className="form-label">Valor</label>
             <input className="form-input form-valor" type="number" placeholder="0,00" value={valor} onChange={e => setValor(e.target.value)} autoFocus />
           </div>
           <div className="form-group">
-            <label className="form-label">Descrição (IA aprende automaticamente)</label>
-            <input className="form-input" placeholder="Ex: Mercado Koch, Posto Ipiranga..." value={descricao} onChange={e => setDescricao(e.target.value)} onBlur={handleDescricaoBlur} />
+            <label className="form-label">Descrição</label>
+            <input className="form-input" placeholder="Ex: Conta de Luz, Mercado..." value={descricao} onChange={e => setDescricao(e.target.value)} onBlur={handleDescricaoBlur} />
           </div>
           <div className="form-group">
             <label className="form-label">Categoria</label>
             {categoriasDespesa.length === 0 ? (
-              <div style={{ fontSize: 12, color: 'var(--text3)', padding: '8px 0' }}>
-                Crie categorias em <strong>Finanças → Categorias</strong>
-              </div>
+              <div style={{ fontSize: 12, color: 'var(--text3)', padding: '8px 0' }}>Crie categorias em <strong>Finanças → Categorias</strong></div>
             ) : (
               <div className="tags">
                 {categoriasDespesa.map(cat => (
-                  <button key={cat.id} className={`tag ${categoria === cat.nome ? 'sel' : ''}`} onClick={() => setCategoria(cat.nome)}>
-                    {cat.icone} {cat.nome}
-                  </button>
+                  <button key={cat.id} className={`tag ${categoria === cat.nome ? 'sel' : ''}`} onClick={() => setCategoria(cat.nome)}>{cat.icone} {cat.nome}</button>
                 ))}
               </div>
             )}
@@ -177,11 +185,11 @@ export default function LancamentoRapido({ open, onClose }) {
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">Data</label>
+            <label className="form-label">{statusDespesa === 'pendente' ? 'Data de vencimento' : 'Data do pagamento'}</label>
             <input className="form-input" type="date" value={data} onChange={e => setData(e.target.value)} />
           </div>
           <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: 12 }} onClick={salvarDespesa} disabled={loading}>
-            {loading ? <Spinner /> : <><i className="ti ti-check" />Lançar em menos de 5s</>}
+            {loading ? <Spinner /> : <><i className="ti ti-check" />{statusDespesa === 'pendente' ? 'Agendar conta' : 'Lançar gasto'}</>}
           </button>
         </>
       )}
@@ -203,15 +211,11 @@ export default function LancamentoRapido({ open, onClose }) {
           <div className="form-group">
             <label className="form-label">Categoria</label>
             {categoriasReceita.length === 0 ? (
-              <div style={{ fontSize: 12, color: 'var(--text3)', padding: '8px 0' }}>
-                Crie categorias em <strong>Finanças → Categorias</strong>
-              </div>
+              <div style={{ fontSize: 12, color: 'var(--text3)', padding: '8px 0' }}>Crie categorias em <strong>Finanças → Categorias</strong></div>
             ) : (
               <div className="tags">
                 {categoriasReceita.map(cat => (
-                  <button key={cat.id} className={`tag ${rCategoria === cat.nome ? 'sel' : ''}`} onClick={() => setRCategoria(cat.nome)}>
-                    {cat.icone} {cat.nome}
-                  </button>
+                  <button key={cat.id} className={`tag ${rCategoria === cat.nome ? 'sel' : ''}`} onClick={() => setRCategoria(cat.nome)}>{cat.icone} {cat.nome}</button>
                 ))}
               </div>
             )}
@@ -255,12 +259,7 @@ export default function LancamentoRapido({ open, onClose }) {
           <div className="form-group">
             <label className="form-label">Status</label>
             <div className="tags">
-              {[
-                { value: 'negativado', label: 'Negativado' },
-                { value: 'em_dia', label: 'Em dia' },
-                { value: 'negociando', label: 'Negociando' },
-                { value: 'parcelado', label: 'Parcelado' },
-              ].map(s => (
+              {[{ value: 'negativado', label: 'Negativado' }, { value: 'em_dia', label: 'Em dia' }, { value: 'negociando', label: 'Negociando' }, { value: 'parcelado', label: 'Parcelado' }].map(s => (
                 <button key={s.value} className={`tag ${dStatus === s.value ? 'sel' : ''}`} onClick={() => setDStatus(s.value)}>{s.label}</button>
               ))}
             </div>

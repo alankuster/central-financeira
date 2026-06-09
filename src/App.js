@@ -7,6 +7,7 @@ import IAConsultora from './pages/IAConsultora'
 import { Receitas, Despesas, Dividas, Acordos } from './pages/Financas'
 import { Radar, Sonhos, Score, Reuniao } from './pages/Outros'
 import Categorias from './pages/Categorias'
+import ContasAPagar from './pages/ContasAPagar'
 import './styles.css'
 
 const link = document.createElement('link')
@@ -31,13 +32,14 @@ export default function App() {
               <Route path="/ia" element={<IAConsultora />} />
               <Route path="/receitas" element={<Receitas />} />
               <Route path="/despesas" element={<Despesas />} />
+              <Route path="/contas-a-pagar" element={<ContasAPagar />} />
               <Route path="/radar" element={<Radar />} />
+              <Route path="/categorias" element={<Categorias />} />
               <Route path="/dividas" element={<Dividas />} />
               <Route path="/acordos" element={<Acordos />} />
               <Route path="/sonhos" element={<Sonhos />} />
               <Route path="/score" element={<Score />} />
               <Route path="/reuniao" element={<Reuniao />} />
-              <Route path="/categorias" element={<Categorias />} />
             </Routes>
           </main>
         </div>
