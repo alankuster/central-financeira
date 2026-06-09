@@ -16,6 +16,7 @@ const navItems = [
       { path: '/receitas', icon: 'arrow-down-circle', label: 'Receitas' },
       { path: '/despesas', icon: 'arrow-up-circle', label: 'Despesas' },
       { path: '/radar', icon: 'radar', label: 'Radar de Vazamentos' },
+      { path: '/categorias', icon: 'tag', label: 'Categorias' },
     ]
   },
   {

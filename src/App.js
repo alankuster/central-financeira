@@ -6,9 +6,9 @@ import Dashboard from './pages/Dashboard'
 import IAConsultora from './pages/IAConsultora'
 import { Receitas, Despesas, Dividas, Acordos } from './pages/Financas'
 import { Radar, Sonhos, Score, Reuniao } from './pages/Outros'
+import Categorias from './pages/Categorias'
 import './styles.css'
 
-// Google Fonts
 const link = document.createElement('link')
 link.href = 'https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Serif+Display:ital@0;1&display=swap'
 link.rel = 'stylesheet'
@@ -37,6 +37,7 @@ export default function App() {
               <Route path="/sonhos" element={<Sonhos />} />
               <Route path="/score" element={<Score />} />
               <Route path="/reuniao" element={<Reuniao />} />
+              <Route path="/categorias" element={<Categorias />} />
             </Routes>
           </main>
         </div>
