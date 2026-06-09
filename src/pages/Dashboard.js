@@ -204,6 +204,35 @@ export default function Dashboard() {
         )}
       </div>
 
+      {/* Já paguei este mês */}
+      {dados.despesas?.filter(d => d.status === 'paga').length > 0 && (
+        <div className="panel" style={{ marginBottom: 16 }}>
+          <div className="panel-header">
+            <div className="panel-title"><i className="ti ti-circle-check" style={{ color: 'var(--green)' }} />✅ Já paguei este mês</div>
+            <span style={{ fontSize: 13, color: 'var(--green)', fontWeight: 700 }}>
+              {formatBRL(dados.despesas.filter(d => d.status === 'paga').reduce((s, d) => s + Number(d.valor), 0))}
+            </span>
+          </div>
+          {dados.despesas.filter(d => d.status === 'paga').slice(0, 5).map(d => (
+            <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 10px', background: 'var(--bg3)', borderRadius: 'var(--radius-sm)', marginBottom: 6 }}>
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--green)', flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>{d.descricao}</div>
+                <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+                  {d.data_pagamento ? `Pago em ${d.data_pagamento}` : d.data} · {d.categoria}
+                </div>
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text2)' }}>-{formatBRL(d.valor)}</div>
+            </div>
+          ))}
+          {dados.despesas.filter(d => d.status === 'paga').length > 5 && (
+            <div style={{ fontSize: 12, color: 'var(--text3)', textAlign: 'center', marginTop: 4 }}>
+              + {dados.despesas.filter(d => d.status === 'paga').length - 5} lançamento(s) — veja em Despesas
+            </div>
+          )}
+        </div>
+      )}
+
       {/* IA Diagnóstico — sob demanda */}
       <div className="panel" style={{ marginBottom: 16 }}>
         <div className="panel-header">
