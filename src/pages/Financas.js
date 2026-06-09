@@ -10,7 +10,7 @@ const CORES = ['#4ADE80','#60A5FA','#F87171','#FCD34D','#A78BFA','#34D399','#F97
 function getMeses() {
   const meses = []
   const hoje = new Date()
-  for (let i = 5; i >= -1; i--) {
+  for (let i = -6; i <= 3; i++) {
     const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1)
     const val = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
     const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
