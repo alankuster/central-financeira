@@ -202,6 +202,9 @@ export default function FluxoCaixa() {
                           <span>{item.responsavel === 'alan' ? 'Alan' : item.responsavel === 'vanessa' ? 'Vanessa' : 'Família'}</span>
                           <span>·</span>
                           <span style={{ color: st.cor }}>{st.icon} {st.label}</span>
+                          {item._tipo === 'despesa' && item.data_pagamento && item.data_pagamento !== item.data && (
+                            <><span>·</span><span style={{ color: 'var(--text3)' }}>pago em {item.data_pagamento}</span></>
+                          )}
                         </div>
                       </div>
 

@@ -59,7 +59,7 @@ export default function ContasAPagar() {
   }
 
   async function marcarPaga(id) {
-    await supabase.from('despesas').update({ status: 'paga' }).eq('id', id)
+    await supabase.from('despesas').update({ status: 'paga', data_pagamento: new Date().toISOString().split('T')[0] }).eq('id', id)
     showToast('✓ Conta marcada como paga!')
     carregar()
   }

@@ -60,7 +60,7 @@ export default function Dashboard() {
 
   async function marcarPaga(e, id) {
     e.stopPropagation()
-    await supabase.from('despesas').update({ status: 'paga' }).eq('id', id)
+    await supabase.from('despesas').update({ status: 'paga', data_pagamento: new Date().toISOString().split('T')[0] }).eq('id', id)
     recarregar(); carregarExtra()
   }
 
