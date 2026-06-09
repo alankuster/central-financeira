@@ -8,6 +8,7 @@ import { Receitas, Despesas, Dividas, Acordos } from './pages/Financas'
 import { Radar, Sonhos, Score, Reuniao } from './pages/Outros'
 import Categorias from './pages/Categorias'
 import ContasAPagar from './pages/ContasAPagar'
+import FluxoCaixa from './pages/FluxoCaixa'
 import './styles.css'
 
 const link = document.createElement('link')
@@ -33,6 +34,7 @@ export default function App() {
               <Route path="/receitas" element={<Receitas />} />
               <Route path="/despesas" element={<Despesas />} />
               <Route path="/contas-a-pagar" element={<ContasAPagar />} />
+              <Route path="/fluxo-caixa" element={<FluxoCaixa />} />
               <Route path="/radar" element={<Radar />} />
               <Route path="/categorias" element={<Categorias />} />
               <Route path="/dividas" element={<Dividas />} />

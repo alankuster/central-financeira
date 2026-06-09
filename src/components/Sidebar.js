@@ -1,8 +1,7 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useFinanceiro } from '../context/FinanceiroContext'
 import { supabase } from '../lib/supabase'
-import { useEffect, useState } from 'react'
 
 const navItems = [
   {
@@ -18,6 +17,7 @@ const navItems = [
       { path: '/receitas', icon: 'arrow-down-circle', label: 'Receitas' },
       { path: '/despesas', icon: 'arrow-up-circle', label: 'Despesas' },
       { path: '/contas-a-pagar', icon: 'calendar-due', label: 'Contas a Pagar', badgeContas: true },
+      { path: '/fluxo-caixa', icon: 'arrows-exchange', label: 'Fluxo de Caixa' },
       { path: '/radar', icon: 'radar', label: 'Radar de Vazamentos' },
       { path: '/categorias', icon: 'tag', label: 'Categorias' },
     ]
@@ -87,7 +87,7 @@ export default function Sidebar() {
       <div className="semaforo-mini">
         <div className="dot" style={{ background: sem.color, boxShadow: sem.shadow }} />
         <div>
-          <div className="semaforo-text">Situação atual</div>
+          <div class="semaforo-text">Situação atual</div>
           <div className="semaforo-valor" style={{ color: sem.color }}>{sem.label}</div>
         </div>
       </div>
